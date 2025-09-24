@@ -1,18 +1,16 @@
-// Prereqs on the Jenkins agent: Docker + Docker Compose, Node.js 20+ (for npm, npx)
-// Create a Secret Text credential in Jenkins named 'sonar-token' for SonarQube auth.
-
 pipeline {
   agent any
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-  }
+  options { timestamps(); disableConcurrentBuilds() }
+
   environment {
     IMAGE          = "simple-pet-adopt"
     TAG            = "${env.BUILD_NUMBER}"
-    SONAR_HOST_URL = "http://localhost:9000"
-    SONAR_LOGIN    = credentials('sonar-token') // Jenkins > Manage Credentials
-    // Defaults for app containers
+
+    // IMPORTANT: from inside the Jenkins container, "localhost" is NOT the host.
+    // Use host.docker.internal to reach the SonarQube port that Docker Desktop exposes.
+    SONAR_HOST_URL = "http://host.docker.internal:9000"
+    SONAR_LOGIN    = credentials('sonar-token')  // Jenkins > Credentials (Secret text)
+
     APP_USER       = "admin"
     APP_PASS       = "admin123"
     SESSION_SECRET = "change_me_in_jenkins"
@@ -23,75 +21,72 @@ pipeline {
     stage('Build') {
       steps {
         echo "Building Docker image ${IMAGE}:${TAG}"
-        sh 'docker build -t $IMAGE:$TAG .'
-        sh 'docker tag $IMAGE:$TAG $IMAGE:latest'
+        sh '''
+          docker build -t $IMAGE:$TAG .
+          docker tag $IMAGE:$TAG $IMAGE:latest
+        '''
       }
     }
 
     stage('Test') {
       steps {
-         echo "Installing deps and running unit tests"
-         sh '''
-            docker run --rm -v "$PWD:/app" -w /app node:20 \
+        echo "Installing deps and running unit tests inside Node 20 container"
+        sh '''
+          docker run --rm -v "$PWD:/app" -w /app node:20 \
             bash -lc "npm ci && npm test -- --coverage"
-         '''
-         # archive coverage if you want
+        '''
       }
       post {
-         always {
-            archiveArtifacts artifacts: 'coverage/**', fingerprint: true
-         }
+        always {
+          // archive coverage if you want it in Jenkins artifacts
+          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+        }
       }
-   }
+    }
 
     stage('Code Quality') {
       steps {
-        echo "Starting SonarQube (Docker Compose) and running scanner"
+        echo "Running SonarQube scan via npx (Node 20 container)"
         sh '''
-          docker compose up -d sonarqube
-          # give SonarQube a moment to boot the first time
-          sleep 25
-          npx sonar-scanner \
-            -Dsonar.host.url=$SONAR_HOST_URL \
-            -Dsonar.login=$SONAR_LOGIN
+          # assume SonarQube is already running on host port 9000
+          docker run --rm -v "$PWD:/app" -w /app \
+            -e SONAR_HOST_URL=$SONAR_HOST_URL -e SONAR_LOGIN=$SONAR_LOGIN \
+            node:20 bash -lc "npx --yes sonar-scanner -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_LOGIN"
         '''
       }
     }
 
     stage('Security') {
       steps {
-        echo "Dependency audit and container scan"
-        // npm audit fails on advisories by design; do not fail the whole pipeline automatically.
-        sh 'npm audit --json || true'
-        // Trivy exits 0 so the stage passes; tighten to --exit-code 1 if you want to gate on severity.
-        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.54.1 image --format table $IMAGE:$TAG || true'
+        echo "npm audit (deps) and Trivy (image) scans"
+        sh '''
+          docker run --rm -v "$PWD:/app" -w /app node:20 \
+            bash -lc "npm ci && npm audit --json || true"
+
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.54.1 image --format table $IMAGE:$TAG || true
+        '''
       }
     }
 
     stage('Deploy (Staging)') {
       steps {
-        echo "Deploying to staging (port 3001)"
+        echo "Deploying to staging with docker-compose (port 3001)"
         sh '''
-          TAG=staging \
-          APP_USER=$APP_USER APP_PASS=$APP_PASS SESSION_SECRET=$SESSION_SECRET \
-          docker compose up -d --build web-staging
-          # Smoke test
-          curl -fsS http://localhost:3001/health
+          # bring up SonarKuma/etc elsewhere if you want; here we just run the app
+          docker-compose -f docker-compose.yml up -d --build web-staging
+          curl -fsS http://host.docker.internal:3001/health
         '''
       }
     }
 
     stage('Release (Promote to Prod)') {
       steps {
-        echo "Promoting image to prod (port 3000)"
+        echo "Promoting to prod (port 3000)"
         sh '''
           docker tag $IMAGE:$TAG $IMAGE:prod
-          TAG=latest \
-          APP_USER=$APP_USER APP_PASS=$APP_PASS SESSION_SECRET=$SESSION_SECRET \
-          docker compose up -d web-prod
-          # Prod health check
-          curl -fsS http://localhost:3000/health
-          # Lightweight git tag for traceability (ignore if workspace isn't a git repo)
+          docker-compose -f docker-compose.yml up -d web-prod
+          curl -fsS http://host.docker.internal:3000/health
           git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
         '''
       }
@@ -99,36 +94,23 @@ pipeline {
 
     stage('Monitoring & Alerting') {
       steps {
-        echo "Bringing up Uptime Kuma and verifying target endpoints"
+        echo "Starting Uptime Kuma (once) and verifying endpoints"
         sh '''
-          docker compose up -d uptime-kuma
-          # confirm the app endpoints are healthy right now
-          curl -fsS http://localhost:3000/health
-          curl -fsS http://localhost:3001/health
+          docker-compose -f docker-compose.yml up -d uptime-kuma || true
+          curl -fsS http://host.docker.internal:3000/health
+          curl -fsS http://host.docker.internal:3001/health
         '''
-        echo "Open Kuma at http://localhost:3002 to add monitors for /health (manual once-off)."
+        echo 'Open Uptime Kuma at http://localhost:3002 and add GET monitors for /health.'
       }
     }
   }
 
   post {
     success {
-      echo "Pipeline OK. Staging: :3001, Prod: :3000, SonarQube: :9000, Uptime Kuma: :3002"
-      // Configure Mailer or Email Ext if you want emails. Example:
-      // emailext to: 'you@example.com',
-      //   subject: "OK #${env.BUILD_NUMBER} ${env.JOB_NAME}",
-      //   body: "Deployed v1.${env.BUILD_NUMBER}. Staging :3001, Prod :3000"
+      echo "Pipeline OK. Staging :3001, Prod :3000, SonarQube :9000, Kuma :3002"
     }
     failure {
-      echo "Pipeline FAILED. See console output for the faceplant."
-      // emailext to: 'you@example.com',
-      //   subject: "FAILED #${env.BUILD_NUMBER} ${env.JOB_NAME}",
-      //   body: "Build URL: ${env.BUILD_URL}"
-    }
-    always {
-      // Optional cleanup hook if you tend to leave zombies everywhere:
-      echo "Disk usage snapshot (optional)"
-      sh 'docker images --format "{{.Repository}}:{{.Tag}}\t{{.Size}}" | sort || true'
+      echo "Pipeline FAILED. Check the stage that faceplanted in Console Output."
     }
   }
 }
