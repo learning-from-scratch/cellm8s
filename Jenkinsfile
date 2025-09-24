@@ -32,12 +32,11 @@ pipeline {
   steps {
     echo "Installing deps and running unit tests inside Node 20 container"
     sh '''
-      docker run --rm -v "$PWD:/app" -w /app node:20 bash -lc '
+      docker run --rm -v "$WORKSPACE:/app" -w /app node:20 bash -lc '
         set -eux
         node -v
         npm -v
         ls -la | sed -n "1,120p"
-        # if lockfile exists use ci, otherwise fall back to install (keeps CI green if you forgot to commit it)
         if [ -f package-lock.json ]; then
           npm ci
         else
@@ -52,6 +51,7 @@ pipeline {
     always { archiveArtifacts artifacts: 'coverage/**', fingerprint: true }
   }
 }
+
 
 
     stage('Code Quality') {
