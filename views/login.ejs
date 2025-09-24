@@ -1,8 +1,29 @@
-<%- include('layout', { body: ` <h1>Login</h1>
-   ${error ? `<p class="err">${error}</p>` : ``}
-   <form method="post" action="/login">
-      <input name="username" placeholder="username" />
-      <input name="password" type="password" placeholder="password" />
-      <button>Sign in</button>
-   </form>
+<%- include('layout', { body: ` <div class="row justify-content-center">
+   <div class="col-12 col-sm-10 col-md-8 col-lg-6 col-xl-5">
+      <div class="card shadow-sm my-5">
+         <div class="card-body p-4 p-md-5">
+            <h1 class="h3 mb-3 text-center">Welcome to Pet Adopt</h1>
+            <p class="text-muted text-center mb-4">Sign in to find your next best friend.</p>
+            ${error ? `<div class=\"alert alert-danger\" role=\"alert\">${error}</div>` : ``}
+            <form method="post" action="/login" novalidate>
+               <div class="mb-3">
+                  <label for="username" class="form-label">Username</label>
+                  <input id="username" name="username" class="form-control" placeholder="e.g. jane_doe" required />
+               </div>
+               <div class="mb-4">
+                  <label for="password" class="form-label">Password</label>
+                  <input id="password" name="password" type="password" class="form-control" placeholder="••••••••"
+                     required />
+               </div>
+               <div class="d-grid">
+                  <button class="btn btn-primary btn-lg" type="submit">Sign in</button>
+               </div>
+            </form>
+            <div class="text-center mt-4">
+               <small class="text-muted">New here? Explore our pets on the <a href="/pets">Pets</a> page.</small>
+            </div>
+         </div>
+      </div>
+   </div>
+   </div>
    ` }) %>
