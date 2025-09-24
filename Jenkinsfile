@@ -69,23 +69,20 @@ pipeline {
 
 
     stage('Code Quality') {
-      steps {
-        echo "SonarQube scan in Node container"
-        sh """
-          docker run --rm \
-            -e SONAR_HOST_URL="${SONAR_HOST_URL}" \
-            -e SONAR_LOGIN="${SONAR_LOGIN}" \
-            -v "${WORKSPACE}:/app" \
-            -w /app \
-            node:20 bash -lc '
-              set -eux
-              npx --yes sonar-scanner \
-                -Dsonar.host.url="$SONAR_HOST_URL" \
-                -Dsonar.login="$SONAR_LOGIN"
-            '
-        """
-      }
-    }
+  steps {
+    echo "SonarQube scan using official scanner image"
+    sh """
+      docker run --rm \
+        -e SONAR_HOST_URL=$SONAR_HOST_URL \
+        -e SONAR_LOGIN=$SONAR_LOGIN \
+        -v ${WORKSPACE}:/usr/src \
+        sonarsource/sonar-scanner-cli \
+        sonar-scanner \
+          -Dsonar.projectBaseDir=/usr/src
+    """
+  }
+}
+
 
     stage('Security') {
       steps {
