@@ -1,6 +1,9 @@
 pipeline {
   agent any
-  options { timestamps(); disableConcurrentBuilds() }
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
 
   environment {
     IMAGE          = "simple-pet-adopt"
@@ -27,158 +30,121 @@ pipeline {
     }
 
     stage('Test') {
-  steps {
-    echo "Run unit tests in the built image and extract coverage"
-    sh """
-      set -eux
-
-      # 1) Create a throwaway container from the just-built image that runs the tests
-      CID=\$(docker create simple-pet-adopt:${TAG} /bin/sh -lc '
-        set -eux
-        node -v
-        npm -v
-        npm test -- --coverage
-      ')
-
-      # 2) Start it and stream logs (if tests fail, we still want to copy coverage below)
-      docker start -a "\$CID" || true
-
-      # 3) Copy coverage folder from the container to Jenkins workspace
-      rm -rf "${WORKSPACE}/coverage" || true
-      docker cp "\$CID:/app/coverage" "${WORKSPACE}/coverage" || true
-
-      # 4) Clean up the container
-      docker rm "\$CID" || true
-      # Make artifacts world-readable for Jenkins
-      chmod -R a+rX "${WORKSPACE}/coverage" || true
-    """
-  }
-  post {
-    always {
-      script {
-        if (fileExists('coverage')) {
-          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
-        } else {
-          echo 'No coverage directory found to archive'
+      steps {
+        echo "Run unit tests and extract coverage"
+        sh """
+          set -eux
+          CID=\$(docker create ${IMAGE}:${TAG} /bin/sh -lc '
+            set -eux
+            node -v
+            npm -v
+            npm test -- --coverage
+          ')
+          docker start -a "\$CID" || true
+          rm -rf "${WORKSPACE}/coverage" || true
+          docker cp "\$CID:/app/coverage" "${WORKSPACE}/coverage" || true
+          docker rm "\$CID" || true
+          chmod -R a+rX "${WORKSPACE}/coverage" || true
+        """
+      }
+      post {
+        always {
+          script {
+            if (fileExists('coverage')) {
+              archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+            } else {
+              echo 'No coverage directory found to archive'
+            }
+          }
         }
       }
     }
-  }
-}
 
-
-stage('Code Quality') {
-  steps {
-    withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-  sh '''
-    set -eux
-    VOLUME_NAME=jenkins_home
-    PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
-
-    # sanity list
-    docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home alpine:3.20 \
-      sh -lc 'ls -la /var/jenkins_home/workspace/cellm8s | head -20'
-
-    docker run --rm \
-      -e SONAR_HOST_URL=http://host.docker.internal:9000 \
-      -e SONAR_TOKEN="${SONAR_TOKEN}" \
-      -v ${VOLUME_NAME}:/var/jenkins_home \
-      sonarsource/sonar-scanner-cli \
-      sonar-scanner \
-        -Dsonar.projectBaseDir=${PROJECT_DIR} \
-        -Dsonar.login=${SONAR_TOKEN}
-  '''
-}
-  }
-}
-
-
-
-
-
+    stage('Code Quality') {
+      steps {
+        withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+          sh '''
+            set -eux
+            VOLUME_NAME=jenkins_home
+            PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
+            docker run --rm \
+              -e SONAR_HOST_URL=${SONAR_HOST_URL} \
+              -e SONAR_TOKEN="${SONAR_TOKEN}" \
+              -v ${VOLUME_NAME}:/var/jenkins_home \
+              sonarsource/sonar-scanner-cli \
+              sonar-scanner \
+                -Dsonar.projectBaseDir=${PROJECT_DIR} \
+                -Dsonar.login=${SONAR_TOKEN}
+          '''
+        }
+      }
+    }
 
     stage('Security') {
-  steps {
-    echo 'npm audit and Trivy scan'
-    sh '''
-      set -eux
-      VOLUME_NAME=jenkins_home
-      PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
-
-      # npm audit
-      docker run --rm \
-        -v ${VOLUME_NAME}:/var/jenkins_home \
-        -w ${PROJECT_DIR} \
-        node:20 bash -lc 'npm ci && npm audit --json || true'
-
-      # Trivy image scan (unchanged)
-      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-        aquasec/trivy:0.54.1 image --format table simple-pet-adopt:${BUILD_NUMBER}
-    '''
-  }
-}
-
+      steps {
+        echo 'npm audit and Trivy scan'
+        sh '''
+          set -eux
+          VOLUME_NAME=jenkins_home
+          PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
+          docker run --rm \
+            -v ${VOLUME_NAME}:/var/jenkins_home \
+            -w ${PROJECT_DIR} \
+            node:20 bash -lc 'npm ci && npm audit --json || true'
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.54.1 image --format table ${IMAGE}:${BUILD_NUMBER}
+        '''
+      }
+    }
 
     stage('Deploy (Staging)') {
       steps {
-        echo "docker-compose up web-staging (3001)"
+        echo "Deploying to staging (port 3001)"
         sh '''
-  set -eux
-  for i in $(seq 1 30); do
-    code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
-    if [ "$code" = "200" ]; then
-      echo "Healthcheck passed"
-      exit 0
-    fi
-    echo "Waiting for app... (got HTTP $code)"
-    sleep 2
-  done
-
-  echo "Healthcheck failed after retries"
-  docker logs cellm8s-web-staging-1 || true
-  exit 1
-'''
+          set -eux
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
+            if [ "$code" = "200" ]; then
+              echo "Healthcheck passed"
+              exit 0
+            fi
+            echo "Waiting for app... (HTTP $code)"
+            sleep 2
+          done
+          echo "Healthcheck failed"
+          docker logs cellm8s-web-staging-1 || true
+          exit 1
+        '''
       }
     }
 
     stage('Release (Promote to Prod)') {
-  steps {
-    echo "docker-compose up web-prod (3000)"
-    sh '''
-      set -eux
-      : "${IMAGE:=simple-pet-adopt}"
-      : "${TAG:=latest}"
-      export COMPOSE_PROJECT_NAME=cellm8s
+      steps {
+        echo "Deploying to production (port 3000)"
+        sh '''
+          set -eux
+          : "${IMAGE:=simple-pet-adopt}"
+          : "${TAG:=latest}"
+          export COMPOSE_PROJECT_NAME=cellm8s
 
-      # Tag the image that just passed tests as "prod"
-      docker tag "$IMAGE:$TAG" "$IMAGE:prod"
+          docker tag "$IMAGE:$TAG" "$IMAGE:prod"
+          CID=$(docker ps -q --filter "publish=3000" || true)
+          if [ -n "$CID" ]; then docker rm -f $CID || true; fi
+          docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" rm -fs web-prod || true
+          docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate web-prod
 
-      # If anything is already bound to host:3000, kill it to free the port
-      CID=$(docker ps -q --filter "publish=3000" || true)
-      if [ -n "$CID" ]; then docker rm -f $CID || true; fi
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
+            [ "$code" = "200" ] && { echo "Prod healthy"; ok=1; break; }
+            echo "Waiting for prod... (HTTP ${code:-none})"
+            sleep 2
+          done
+          [ "${ok:-}" = "1" ] || { echo "Prod failed healthcheck"; docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 || true; exit 1; }
 
-      # Remove old web-prod from this compose project (safe if it doesn't exist)
-      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" rm -fs web-prod || true
-
-      # Bring prod up fresh
-      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate web-prod
-
-      # Healthcheck prod (wait up to ~60s)
-      for i in $(seq 1 30); do
-        code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
-        [ "$code" = "200" ] && { echo "Prod healthy"; ok=1; break; }
-        echo "Waiting for prod... (HTTP ${code:-none})"
-        sleep 2
-      done
-      [ "${ok:-}" = "1" ] || { echo "Prod failed healthcheck"; docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 || true; exit 1; }
-
-      # Tag the repo only after successful deploy (+ optionally push the tag)
-      git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
-      # git push --tags || true   # uncomment if you want to push tags
-    '''
-  }
-}
-
+          git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
+        '''
+      }
+    }
 
     stage('Monitoring & Alerting') {
       steps {
@@ -193,7 +159,7 @@ stage('Code Quality') {
   }
 
   post {
-    success { echo "All good. Staging :3001, Prod :3000, Sonar :9000, Kuma :3002" }
-    failure { echo "Something faceplanted. Check the first red line in Console Output." }
+    success { echo "✅ All good. Staging :3001, Prod :3000, Sonar :9000, Kuma :3002" }
+    failure { echo "❌ Something failed. Check logs for details." }
   }
 }
