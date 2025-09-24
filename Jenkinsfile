@@ -67,47 +67,30 @@ pipeline {
 }
 
 
-
 stage('Code Quality') {
   steps {
-    // 1) Debug: prove Jenkins actually has the sonar-project.properties file
-    sh '''
-      set -eux
-      echo "Workspace is: $WORKSPACE"
-      echo "Top-level files in workspace:"
-      ls -la "$WORKSPACE" | sed -n '1,200p'
-
-      if [ -f "$WORKSPACE/sonar-project.properties" ]; then
-        echo "----- sonar-project.properties (first 120 lines) -----"
-        sed -n '1,120p' "$WORKSPACE/sonar-project.properties"
-        echo "------------------------------------------------------"
-      else
-        echo "ERROR: sonar-project.properties is NOT in the workspace!"
-        exit 2
-      fi
-    '''
-
-    sh '''
-      set -eux
-      docker run --rm -v "$WORKSPACE:/usr/src" alpine:3.20 \
-         sh -lc 'ls -la /usr/src; echo "---"; cat /usr/src/sonar-project.properties'
-      '''
-
-
-    // 2) Run SonarScanner (replace credentialsId with yours)
-    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+    withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
       sh '''
         set -eux
+        VOLUME_NAME=jenkins_home
+        PROJECT_DIR="/var/jenkins_home/workspace/${JOB_NAME}"
+
+        # Debug: show files inside workspace as seen by scanner container
+        docker run --rm -v "${VOLUME_NAME}:/var/jenkins_home" alpine:3.20 \
+          sh -lc "ls -la ${PROJECT_DIR} | head -20"
+
+        # Run Sonar scanner using same Jenkins home volume
         docker run --rm \
-          -e SONAR_HOST_URL=http://host.docker.internal:9000 \
+          -e SONAR_HOST_URL="http://host.docker.internal:9000" \
           -e SONAR_TOKEN="$SONAR_TOKEN" \
-          -v "$WORKSPACE:/usr/src" \
+          -v "${VOLUME_NAME}:/var/jenkins_home" \
           sonarsource/sonar-scanner-cli \
-          sonar-scanner -Dsonar.projectBaseDir=/usr/src
+          sonar-scanner -Dsonar.projectBaseDir="${PROJECT_DIR}"
       '''
     }
   }
 }
+
 
 
 
