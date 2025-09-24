@@ -1,0 +1,10 @@
+<%- include('layout', { body: ` <h1>Pets</h1>
+   ${error ? `<p class="err">${error}</p>` : ``}
+   <ul>${pets.map(p => `<li>${p.name} (${p.type})</li>`).join("")}</ul>
+   <h2>Add Pet</h2>
+   <form method="post">
+      <input name="name" placeholder="name" />
+      <input name="type" placeholder="type (e.g., cat, dog)" />
+      <button>Add</button>
+   </form>
+   ` }) %>

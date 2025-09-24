@@ -1,0 +1,19 @@
+services:
+   web-staging:
+      build: .
+      image: simple-pet-adopt:${TAG:-staging}
+      environment: [ PORT=3001, APP_USER=admin, APP_PASS=admin123, SESSION_SECRET=changeme ]
+      ports: [ "3001:3001" ]
+      command: [ "node", "src/server.js" ]
+   web-prod:
+      image: simple-pet-adopt:${TAG:-latest}
+      environment: [ PORT=3000, APP_USER=admin, APP_PASS=admin123, SESSION_SECRET=changeme ]
+      ports: [ "3000:3000" ]
+      command: [ "node", "src/server.js" ]
+   sonarqube:
+      image: sonarqube:lts-community
+      ports: [ "9000:9000" ]
+   uptime-kuma:
+      image: louislam/uptime-kuma:1
+      ports: [ "3002:3001" ]
+      volumes: [ "./ukdata:/app/data" ]

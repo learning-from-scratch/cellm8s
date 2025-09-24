@@ -1,0 +1,19 @@
+{
+   "name": "simple-pet-adopt",
+   "version": "1.0.0",
+   "scripts": {
+      "start": "node src/server.js",
+      "test": "jest --runInBand",
+      "build": "echo build step placeholder"
+   },
+   "dependencies": {
+      "body-parser": "^1.20.2",
+      "ejs": "^3.1.10",
+      "express": "^4.19.2",
+      "express-session": "^1.18.0"
+   },
+   "devDependencies": {
+      "jest": "^29.7.0",
+      "supertest": "^7.0.0"
+   }
+}
