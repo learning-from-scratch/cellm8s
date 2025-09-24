@@ -28,25 +28,33 @@ pipeline {
 
     stage('Test') {
   steps {
-    echo "Run unit tests inside the built image with workspace mounted"
+    echo "Run unit tests in the built image and extract coverage"
     sh """
-      docker run --rm \
-        -v "${WORKSPACE}:/app" \
-        -w /app \
-        simple-pet-adopt:${TAG} /bin/sh -lc '
-          set -eux
-          node -v
-          npm -v
-          # run tests and write coverage into /app/coverage (== ${WORKSPACE}/coverage)
-          npm test -- --coverage
-          # make sure Jenkins can read the files even if the container wrote them as root
-          chmod -R a+rX /app/coverage || true
-        '
+      set -eux
+
+      # 1) Create a throwaway container from the just-built image that runs the tests
+      CID=\$(docker create simple-pet-adopt:${TAG} /bin/sh -lc '
+        set -eux
+        node -v
+        npm -v
+        npm test -- --coverage
+      ')
+
+      # 2) Start it and stream logs (if tests fail, we still want to copy coverage below)
+      docker start -a "\$CID" || true
+
+      # 3) Copy coverage folder from the container to Jenkins workspace
+      rm -rf "${WORKSPACE}/coverage" || true
+      docker cp "\$CID:/app/coverage" "${WORKSPACE}/coverage" || true
+
+      # 4) Clean up the container
+      docker rm "\$CID" || true
+      # Make artifacts world-readable for Jenkins
+      chmod -R a+rX "${WORKSPACE}/coverage" || true
     """
   }
   post {
     always {
-      // archive only if it actually exists, so the post block doesn't nuke the build
       script {
         if (fileExists('coverage')) {
           archiveArtifacts artifacts: 'coverage/**', fingerprint: true
@@ -57,6 +65,7 @@ pipeline {
     }
   }
 }
+
 
 
     stage('Code Quality') {
