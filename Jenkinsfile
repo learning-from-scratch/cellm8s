@@ -28,24 +28,36 @@ pipeline {
 
     stage('Test') {
   steps {
-    echo "Run unit tests inside the freshly built image"
+    echo "Run unit tests inside the built image with workspace mounted"
     sh """
-      # run tests; image is node:20-alpine based, so use /bin/sh
       docker run --rm \
+        -v "${WORKSPACE}:/app" \
         -w /app \
-        -v "${WORKSPACE}/coverage:/app/coverage" \
         simple-pet-adopt:${TAG} /bin/sh -lc '
           set -eux
           node -v
           npm -v
+          # run tests and write coverage into /app/coverage (== ${WORKSPACE}/coverage)
           npm test -- --coverage
+          # make sure Jenkins can read the files even if the container wrote them as root
+          chmod -R a+rX /app/coverage || true
         '
     """
   }
   post {
-    always { archiveArtifacts artifacts: 'coverage/**', fingerprint: true }
+    always {
+      // archive only if it actually exists, so the post block doesn't nuke the build
+      script {
+        if (fileExists('coverage')) {
+          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+        } else {
+          echo 'No coverage directory found to archive'
+        }
+      }
+    }
   }
 }
+
 
     stage('Code Quality') {
       steps {
