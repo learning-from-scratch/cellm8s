@@ -70,19 +70,38 @@ pipeline {
 
     stage('Code Quality') {
   steps {
+    // 1) Debug: prove Jenkins actually has the sonar-project.properties file
+    sh '''
+      set -eux
+      echo "Workspace is: $WORKSPACE"
+      echo "Top-level files in workspace:"
+      ls -la "$WORKSPACE" | sed -n '1,200p'
+
+      if [ -f "$WORKSPACE/sonar-project.properties" ]; then
+        echo "----- sonar-project.properties (first 120 lines) -----"
+        sed -n '1,120p' "$WORKSPACE/sonar-project.properties"
+        echo "------------------------------------------------------"
+      else
+        echo "ERROR: sonar-project.properties is NOT in the workspace!"
+        exit 2
+      fi
+    '''
+
+    // 2) Run SonarScanner (replace credentialsId with yours)
     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
       sh '''
+        set -eux
         docker run --rm \
           -e SONAR_HOST_URL=http://host.docker.internal:9000 \
-          -e SONAR_TOKEN=${SONAR_TOKEN} \
-          -v ${WORKSPACE}:/usr/src \
+          -e SONAR_TOKEN="$SONAR_TOKEN" \
+          -v "$WORKSPACE:/usr/src" \
           sonarsource/sonar-scanner-cli \
-          sonar-scanner \
-            -Dsonar.projectBaseDir=/usr/src
+          sonar-scanner -Dsonar.projectBaseDir=/usr/src
       '''
     }
   }
 }
+
 
 
 
