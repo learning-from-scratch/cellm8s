@@ -143,6 +143,31 @@ stage('Code Quality') {
 
     stage('Release (Promote to Prod)') {
       steps {
+         sh '''
+  set -eux
+  export COMPOSE_PROJECT_NAME=cellm8s
+
+  # See if anything already binds host:3000
+  docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep ':3000->' || true
+
+  # Remove any existing web-prod container for this compose project (safe if none)
+  docker compose -f docker-compose.yml rm -fs web-prod || true
+
+  # Bring prod up fresh
+  docker compose -f docker-compose.yml up -d --force-recreate web-prod
+
+  # Healthcheck prod
+  for i in $(seq 1 30); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
+    [ "$code" = "200" ] && { echo "Prod healthy"; exit 0; }
+    echo "Waiting for prod... (HTTP $code)"
+    sleep 2
+  done
+  echo "Prod failed healthcheck"
+  docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 || true
+  exit 1
+'''
+
         echo "docker-compose up web-prod (3000)"
         sh '''
           docker tag $IMAGE:$TAG $IMAGE:prod
