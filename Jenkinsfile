@@ -30,19 +30,19 @@ pipeline {
 
     stage('Test') {
       steps {
-        echo "Installing deps and running unit tests"
-        sh '''
-          npm ci
-          npm test -- --coverage
-        '''
+         echo "Installing deps and running unit tests"
+         sh '''
+            docker run --rm -v "$PWD:/app" -w /app node:20 \
+            bash -lc "npm ci && npm test -- --coverage"
+         '''
+         # archive coverage if you want
       }
       post {
-        always {
-          echo "Archiving coverage for records"
-          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
-        }
+         always {
+            archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+         }
       }
-    }
+   }
 
     stage('Code Quality') {
       steps {
