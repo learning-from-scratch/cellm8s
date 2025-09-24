@@ -70,24 +70,25 @@ pipeline {
 stage('Code Quality') {
   steps {
     withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
-      sh '''
-        set -eux
-        VOLUME_NAME=jenkins_home
-        PROJECT_DIR="/var/jenkins_home/workspace/${JOB_NAME}"
+  sh '''
+    set -eux
+    VOLUME_NAME=jenkins_home
+    PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
 
-        # Debug: show files inside workspace as seen by scanner container
-        docker run --rm -v "${VOLUME_NAME}:/var/jenkins_home" alpine:3.20 \
-          sh -lc "ls -la ${PROJECT_DIR} | head -20"
+    # sanity list
+    docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home alpine:3.20 \
+      sh -lc 'ls -la /var/jenkins_home/workspace/cellm8s | head -20'
 
-        # Run Sonar scanner using same Jenkins home volume
-        docker run --rm \
-          -e SONAR_HOST_URL="http://host.docker.internal:9000" \
-          -e SONAR_TOKEN="$SONAR_TOKEN" \
-          -v "${VOLUME_NAME}:/var/jenkins_home" \
-          sonarsource/sonar-scanner-cli \
-          sonar-scanner -Dsonar.projectBaseDir="${PROJECT_DIR}"
-      '''
-    }
+    docker run --rm \
+      -e SONAR_HOST_URL=http://host.docker.internal:9000 \
+      -e SONAR_TOKEN="${SONAR_TOKEN}" \
+      -v ${VOLUME_NAME}:/var/jenkins_home \
+      sonarsource/sonar-scanner-cli \
+      sonar-scanner \
+        -Dsonar.projectBaseDir=${PROJECT_DIR} \
+        -Dsonar.login=${SONAR_TOKEN}
+  '''
+}
   }
 }
 
