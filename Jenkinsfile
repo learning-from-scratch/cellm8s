@@ -27,26 +27,25 @@ pipeline {
     }
 
     stage('Test') {
-      steps {
-        echo "Installing deps and running unit tests inside Node 20 container"
-        sh """
-          docker run --rm \
-            -v "${WORKSPACE}:/app" \
-            -w /app \
-            node:20 bash -lc '
-              set -eux
-              node -v
-              npm -v
-              ls -la | sed -n "1,200p"
-              if [ -f package-lock.json ]; then npm ci; else npm install; fi
-              npm test -- --coverage
-            '
-        """
-      }
-      post {
-        always { archiveArtifacts artifacts: 'coverage/**', fingerprint: true }
-      }
-    }
+  steps {
+    echo "Run unit tests inside the freshly built image"
+    sh """
+      # run tests; image is node:20-alpine based, so use /bin/sh
+      docker run --rm \
+        -w /app \
+        -v "${WORKSPACE}/coverage:/app/coverage" \
+        simple-pet-adopt:${TAG} /bin/sh -lc '
+          set -eux
+          node -v
+          npm -v
+          npm test -- --coverage
+        '
+    """
+  }
+  post {
+    always { archiveArtifacts artifacts: 'coverage/**', fingerprint: true }
+  }
+}
 
     stage('Code Quality') {
       steps {
