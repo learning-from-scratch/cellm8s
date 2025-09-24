@@ -142,41 +142,43 @@ stage('Code Quality') {
     }
 
     stage('Release (Promote to Prod)') {
-      steps {
-         sh '''
-  set -eux
-  export COMPOSE_PROJECT_NAME=cellm8s
+  steps {
+    echo "docker-compose up web-prod (3000)"
+    sh '''
+      set -eux
+      : "${IMAGE:=simple-pet-adopt}"
+      : "${TAG:=latest}"
+      export COMPOSE_PROJECT_NAME=cellm8s
 
-  # See if anything already binds host:3000
-  docker ps --format 'table {{.ID}}\t{{.Names}}\t{{.Ports}}' | grep ':3000->' || true
+      # Tag the image that just passed tests as "prod"
+      docker tag "$IMAGE:$TAG" "$IMAGE:prod"
 
-  # Remove any existing web-prod container for this compose project (safe if none)
-  docker compose -f docker-compose.yml rm -fs web-prod || true
+      # If anything is already bound to host:3000, kill it to free the port
+      CID=$(docker ps -q --filter "publish=3000" || true)
+      if [ -n "$CID" ]; then docker rm -f $CID || true; fi
 
-  # Bring prod up fresh
-  docker compose -f docker-compose.yml up -d --force-recreate web-prod
+      # Remove old web-prod from this compose project (safe if it doesn't exist)
+      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" rm -fs web-prod || true
 
-  # Healthcheck prod
-  for i in $(seq 1 30); do
-    code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
-    [ "$code" = "200" ] && { echo "Prod healthy"; exit 0; }
-    echo "Waiting for prod... (HTTP $code)"
-    sleep 2
-  done
-  echo "Prod failed healthcheck"
-  docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 || true
-  exit 1
-'''
+      # Bring prod up fresh
+      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate web-prod
 
-        echo "docker-compose up web-prod (3000)"
-        sh '''
-          docker tag $IMAGE:$TAG $IMAGE:prod
-          docker-compose -f docker-compose.yml up -d web-prod
-          curl -fsS http://host.docker.internal:3000/health
-          git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
-        '''
-      }
-    }
+      # Healthcheck prod (wait up to ~60s)
+      for i in $(seq 1 30); do
+        code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
+        [ "$code" = "200" ] && { echo "Prod healthy"; ok=1; break; }
+        echo "Waiting for prod... (HTTP ${code:-none})"
+        sleep 2
+      done
+      [ "${ok:-}" = "1" ] || { echo "Prod failed healthcheck"; docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 || true; exit 1; }
+
+      # Tag the repo only after successful deploy (+ optionally push the tag)
+      git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
+      # git push --tags || true   # uncomment if you want to push tags
+    '''
+  }
+}
+
 
     stage('Monitoring & Alerting') {
       steps {
