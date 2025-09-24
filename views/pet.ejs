@@ -1,0 +1,43 @@
+<%- include('layout', { body: `
+   <div class="row g-4">
+      <div class="col-12 col-lg-5">
+         <div class="card shadow-sm">
+            <div class="ratio ratio-4x3 bg-light" style="background:url('${pet.photo || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=1200&auto=format&fit=crop'}') center/cover no-repeat"></div>
+            <div class="card-body">
+               <h1 class="h4 mb-1">${pet.name}</h1>
+               <div class="text-muted mb-2">${pet.type}${pet.breed ? ` · ${pet.breed}` : ''}</div>
+               <div class="d-flex gap-2 flex-wrap">
+                  ${pet.age ? `<span class=\"badge text-bg-light\">Age: ${pet.age}</span>` : ''}
+                  ${pet.gender ? `<span class=\"badge text-bg-light\">Gender: ${pet.gender}</span>` : ''}
+                  ${pet.weight ? `<span class=\"badge text-bg-light\">Weight: ${pet.weight}</span>` : ''}
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-12 col-lg-7">
+         <div class="card shadow-sm mb-4">
+            <div class="card-body">
+               <h2 class="h5">About</h2>
+               <p class="mb-0">${pet.about || 'This pet is looking for a loving home.'}</p>
+            </div>
+         </div>
+         <div class="card shadow-sm mb-4">
+            <div class="card-body">
+               <h2 class="h5">Health</h2>
+               <ul class="mb-0">
+                  ${Array.isArray(pet.health) ? pet.health.map(h => `<li>${h}</li>`).join('') : '<li>General check-up completed</li>'}
+               </ul>
+            </div>
+         </div>
+         <div class="card shadow-sm">
+            <div class="card-body">
+               <h2 class="h5">Special Needs</h2>
+               <ul class="mb-0">
+                  ${Array.isArray(pet.specialNeeds) && pet.specialNeeds.length ? pet.specialNeeds.map(s => `<li>${s}</li>`).join('') : '<li>None</li>'}
+               </ul>
+            </div>
+         </div>
+      </div>
+   </div>
+   ` }) %>
+

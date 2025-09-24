@@ -3,6 +3,7 @@
    "version": "1.0.0",
    "scripts": {
       "start": "node src/server.js",
+      "start:3003": "PORT=3003 node src/server.js",
       "test": "jest --runInBand",
       "build": "echo build step placeholder"
    },

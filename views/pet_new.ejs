@@ -1,0 +1,65 @@
+<%- include('layout', { body: `
+   <div class="row justify-content-center">
+      <div class="col-12 col-lg-8 col-xl-7">
+         <div class="card shadow-sm">
+            <div class="card-body p-4 p-md-5">
+               <h1 class="h4 mb-4">Add a Pet</h1>
+               ${error ? `<div class=\"alert alert-danger\" role=\"alert\">${error}</div>` : ''}
+               <form method="post" action="/pets/new">
+                  <div class="row g-3">
+                     <div class="col-md-6">
+                        <label class="form-label" for="name">Name</label>
+                        <input class="form-control" id="name" name="name" required />
+                     </div>
+                     <div class="col-md-6">
+                        <label class="form-label" for="type">Type</label>
+                        <input class="form-control" id="type" name="type" placeholder="e.g., Dog, Cat" required />
+                     </div>
+                     <div class="col-md-6">
+                        <label class="form-label" for="breed">Breed</label>
+                        <input class="form-control" id="breed" name="breed" />
+                     </div>
+                     <div class="col-md-3">
+                        <label class="form-label" for="age">Age</label>
+                        <input class="form-control" id="age" name="age" />
+                     </div>
+                     <div class="col-md-3">
+                        <label class="form-label" for="gender">Gender</label>
+                        <select class="form-select" id="gender" name="gender">
+                           <option value="">Select</option>
+                           <option>Male</option>
+                           <option>Female</option>
+                        </select>
+                     </div>
+                     <div class="col-md-6">
+                        <label class="form-label" for="weight">Weight</label>
+                        <input class="form-control" id="weight" name="weight" placeholder="e.g., 25 lb" />
+                     </div>
+                     <div class="col-md-6">
+                        <label class="form-label" for="photo">Photo URL</label>
+                        <input class="form-control" id="photo" name="photo" placeholder="https://..." />
+                     </div>
+                     <div class="col-12">
+                        <label class="form-label" for="about">About</label>
+                        <textarea class="form-control" id="about" name="about" rows="3"></textarea>
+                     </div>
+                     <div class="col-12">
+                        <label class="form-label" for="health">Health (comma-separated)</label>
+                        <input class="form-control" id="health" name="health" placeholder="Vaccinated, Spayed/Neutered" />
+                     </div>
+                     <div class="col-12">
+                        <label class="form-label" for="specialNeeds">Special Needs (comma-separated)</label>
+                        <input class="form-control" id="specialNeeds" name="specialNeeds" placeholder="Daily meds, Calm environment" />
+                     </div>
+                  </div>
+                  <div class="d-flex justify-content-end mt-4">
+                     <a class="btn btn-outline-secondary me-2" href="/pets">Cancel</a>
+                     <button class="btn btn-brand" type="submit">Create</button>
+                  </div>
+               </form>
+            </div>
+         </div>
+      </div>
+   </div>
+   ` }) %>
+

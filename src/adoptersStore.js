@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const file = path.join(__dirname, "..", "data", "pets.json");
+const file = path.join(__dirname, "..", "data", "adopters.json");
 
 function load() {
    if (!fs.existsSync(file)) fs.writeFileSync(file, "[]");
@@ -9,13 +9,15 @@ function load() {
 function save(all) { fs.writeFileSync(file, JSON.stringify(all, null, 2)); }
 
 function list() { return load(); }
-function add(pet) {
+function add(adopter) {
    const all = load();
-   all.push({ id: Date.now(), ...pet });
+   all.push({ id: Date.now(), ...adopter });
    save(all);
 }
 function getById(id) {
    const all = load();
-   return all.find(p => String(p.id) === String(id));
+   return all.find(a => String(a.id) === String(id));
 }
+
 module.exports = { list, add, getById };
+

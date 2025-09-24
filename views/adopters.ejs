@@ -1,0 +1,22 @@
+<%- include('layout', { body: `
+   <div class="d-flex align-items-center justify-content-between mb-4">
+      <h1 class="h3 mb-0">Adopters</h1>
+      <a class="btn btn-brand" href="/adopters/new">Add Adopter</a>
+   </div>
+   ${error ? `<div class=\"alert alert-danger\" role=\"alert\">${error}</div>` : ``}
+   <div class="row g-3 g-md-4">
+      ${adopters.map(a => `
+         <div class=\"col-12 col-sm-6 col-md-4 col-lg-3\">
+            <a href=\"/adopters/${a.id}\" class=\"text-decoration-none text-reset\">
+               <div class=\"card h-100 shadow-sm\">
+                  <div class=\"card-body\">
+                     <h5 class=\"card-title mb-1\">${a.firstName} ${a.lastName}</h5>
+                     <div class=\"text-muted\">${a.city ? a.city + ', ' : ''}${a.state || ''}</div>
+                  </div>
+               </div>
+            </a>
+         </div>
+      `).join("")}
+   </div>
+   ` }) %>
+

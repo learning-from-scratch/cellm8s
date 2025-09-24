@@ -1,10 +1,22 @@
-<%- include('layout', { body: ` <h1>Pets</h1>
-   ${error ? `<p class="err">${error}</p>` : ``}
-   <ul>${pets.map(p => `<li>${p.name} (${p.type})</li>`).join("")}</ul>
-   <h2>Add Pet</h2>
-   <form method="post">
-      <input name="name" placeholder="name" />
-      <input name="type" placeholder="type (e.g., cat, dog)" />
-      <button>Add</button>
-   </form>
+<%- include('layout', { body: `
+   <div class="d-flex align-items-center justify-content-between mb-4">
+      <h1 class="h3 mb-0">Pets</h1>
+      <a class="btn btn-brand" href="/pets/new">Add Pet</a>
+   </div>
+   ${error ? `<div class=\"alert alert-danger\" role=\"alert\">${error}</div>` : ``}
+   <div class="row g-3 g-md-4">
+      ${pets.map(p => `
+         <div class=\"col-12 col-sm-6 col-md-4 col-lg-3\">
+            <a href=\"/pets/${p.id}\" class=\"text-decoration-none text-reset\">
+               <div class=\"card h-100 shadow-sm\">
+                  <div class=\"ratio ratio-4x3 bg-light\" style=\"background:url('${p.photo || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=800&auto=format&fit=crop'}') center/cover no-repeat\"></div>
+                  <div class=\"card-body\">
+                     <h5 class=\"card-title mb-1\">${p.name}</h5>
+                     <div class=\"text-muted\">${p.type}</div>
+                  </div>
+               </div>
+            </a>
+         </div>
+      `).join("")}
+   </div>
    ` }) %>

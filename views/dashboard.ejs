@@ -1,3 +1,107 @@
-<%- include('layout', { body: ` <h1>Welcome, ${user}</h1>
-   <p>Total pets available: <strong>${stats.totalPets}</strong></p>
+<%- include('layout', { body: ` <div class="container">
+   <div class="d-flex align-items-center justify-content-between mb-4">
+      <div>
+         <h1 class="h3 mb-1">Welcome, ${user}</h1>
+         <div class="text-muted">Here’s what’s happening across the adoption platform</div>
+      </div>
+   </div>
+
+   <div class="row g-3 g-md-4 dashboard-cards mb-4">
+      <div class="col-12 col-md-6 col-lg-3">
+         <div class="card p-3">
+            <div class="metric">
+               <div class="metric-icon"><i class="bi bi-heart"></i></div>
+               <div>
+                  <div class="metric-value">${(stats && stats.totalPets) ? stats.totalPets : 0}</div>
+                  <div class="metric-label">Pets available</div>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+         <div class="card p-3">
+            <div class="metric">
+               <div class="metric-icon"><i class="bi bi-people"></i></div>
+               <div>
+                  <div class="metric-value">${(stats && stats.adopters) ? stats.adopters : 0}</div>
+                  <div class="metric-label">Registered adopters</div>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+         <div class="card p-3">
+            <div class="metric">
+               <div class="metric-icon"><i class="bi bi-check2-circle"></i></div>
+               <div>
+                  <div class="metric-value">${(stats && stats.adoptions) ? stats.adoptions : 0}</div>
+                  <div class="metric-label">Successful adoptions</div>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+         <div class="card p-3">
+            <div class="metric">
+               <div class="metric-icon"><i class="bi bi-chat-left-heart"></i></div>
+               <div>
+                  <div class="metric-value">${(stats && stats.applications) ? stats.applications : 0}</div>
+                  <div class="metric-label">Open applications</div>
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+
+   <div class="card p-3 p-md-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+         <h2 class="h5 mb-0">Weekly Adoptions</h2>
+         <small class="text-muted">Past 7 days</small>
+      </div>
+      <canvas id="adoptionsChart" height="120"></canvas>
+   </div>
+   </div>
+
+   <script>
+      (function () {
+         const labels = (stats && stats.weekLabels) || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+         const data = (stats && stats.weekAdoptions) || [2, 3, 4, 1, 5, 2, 3];
+         const ctx = document.getElementById('adoptionsChart');
+         if (!ctx) return;
+         // Chart.js is loaded via CDN in layout? If not, add here:
+         if (typeof Chart === 'undefined') {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+            s.onload = initChart;
+            document.body.appendChild(s);
+         } else {
+            initChart();
+         }
+
+         function initChart() {
+            new Chart(ctx, {
+               type: 'line',
+               data: {
+                  labels,
+                  datasets: [{
+                     label: 'Adoptions',
+                     data,
+                     borderColor: getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#6b5bff',
+                     backgroundColor: 'rgba(107,91,255,0.15)',
+                     fill: true,
+                     tension: 0.35,
+                     pointRadius: 3
+                  }]
+               },
+               options: {
+                  responsive: true,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                     y: { beginAtZero: true, ticks: { precision: 0 } }
+                  }
+               }
+            });
+         }
+      })();
+   </script>
    ` }) %>

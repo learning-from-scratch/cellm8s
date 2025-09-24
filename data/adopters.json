@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1758716623489,
+    "firstName": "Joben",
+    "lastName": "Javellana",
+    "email": "jjavellana@gmail.com",
+    "phone": "23432",
+    "address": "34 Phlips St",
+    "city": "Mentone",
+    "state": "Victoria",
+    "zip": "32432",
+    "about": "Love dogs",
+    "preferences": [
+      "Good with pets"
+    ]
+  }
+]

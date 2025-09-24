@@ -1,8 +1,8 @@
 body {
    font-family: system-ui, sans-serif;
-   margin: 2rem;
 }
 
+/* Legacy spacing for pages that still use default container */
 nav a,
 nav button {
    margin-right: 1rem;
@@ -10,4 +10,119 @@ nav button {
 
 .err {
    color: #b00020;
+}
+
+/* Brand theme */
+:root {
+   --brand-primary: #6b5bff;
+   /* lavender indigo */
+   --brand-secondary: #ff8fa3;
+   /* rose */
+   --brand-dark: #15141a;
+   --brand-light: #f7f7fb;
+}
+
+.btn-brand {
+   --bs-btn-color: #fff;
+   --bs-btn-bg: var(--brand-primary);
+   --bs-btn-border-color: var(--brand-primary);
+   --bs-btn-hover-color: #fff;
+   --bs-btn-hover-bg: #5848ff;
+   /* slightly darker */
+   --bs-btn-hover-border-color: #5848ff;
+   --bs-btn-focus-shadow-rgb: 107, 91, 255;
+   --bs-btn-active-color: #fff;
+   --bs-btn-active-bg: #4938ff;
+   /* darker */
+   --bs-btn-active-border-color: #4938ff;
+   --bs-btn-disabled-bg: var(--brand-primary);
+   --bs-btn-disabled-border-color: var(--brand-primary);
+}
+
+/* Login page */
+.login-page {
+   min-height: 100vh;
+   background: radial-gradient(1200px 600px at right -20%, rgba(107, 91, 255, 0.18), transparent),
+      radial-gradient(1000px 500px at 20% 10%, rgba(255, 143, 163, 0.18), transparent),
+      linear-gradient(180deg, #ffffff 0%, var(--brand-light) 100%);
+}
+
+.login-hero {
+   min-height: 100vh;
+}
+
+.login-media {
+   width: 50%;
+   background:
+      linear-gradient(0deg, rgba(21, 20, 26, 0.35), rgba(21, 20, 26, 0.35)),
+      url('https://images.unsplash.com/photo-1558944351-c3ad8193e3d3?q=80&w=1600&auto=format&fit=crop') center/cover no-repeat;
+}
+
+.login-form-wrapper {
+   width: 50%;
+}
+
+/* Responsive: stack on small screens */
+@media (max-width: 991.98px) {
+   .login-media {
+      display: none !important;
+   }
+
+   .login-form-wrapper {
+      width: 100%;
+   }
+}
+
+.brand-logo {
+   width: 56px;
+   height: 56px;
+   border-radius: 12px;
+   background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+   box-shadow: 0 6px 18px rgba(107, 91, 255, 0.35);
+}
+
+/* Navbar */
+.bg-brand {
+   background: linear-gradient(90deg, var(--brand-primary), #8b7fff);
+}
+
+.navbar .nav-link {
+   color: rgba(255, 255, 255, 0.85);
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link.active {
+   color: #fff;
+}
+
+/* Dashboard */
+.dashboard-cards .card {
+   border: 0;
+   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+.metric {
+   display: flex;
+   align-items: center;
+}
+
+.metric-icon {
+   width: 44px;
+   height: 44px;
+   border-radius: 12px;
+   display: inline-flex;
+   align-items: center;
+   justify-content: center;
+   margin-right: 12px;
+   background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+   color: #fff;
+}
+
+.metric-value {
+   font-size: 1.5rem;
+   font-weight: 700;
+}
+
+.metric-label {
+   color: #6c757d;
 }
