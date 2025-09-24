@@ -98,25 +98,46 @@ stage('Code Quality') {
 
 
     stage('Security') {
-      steps {
-        echo "npm audit and Trivy scan"
-        sh """
-          docker run --rm -v "${WORKSPACE}:/app" -w /app node:20 \
-            bash -lc 'npm ci && npm audit --json || true'
+  steps {
+    echo 'npm audit and Trivy scan'
+    sh '''
+      set -eux
+      VOLUME_NAME=jenkins_home
+      PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
 
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.54.1 image --format table $IMAGE:$TAG || true
-        """
-      }
-    }
+      # npm audit
+      docker run --rm \
+        -v ${VOLUME_NAME}:/var/jenkins_home \
+        -w ${PROJECT_DIR} \
+        node:20 bash -lc 'npm ci && npm audit --json || true'
+
+      # Trivy image scan (unchanged)
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy:0.54.1 image --format table simple-pet-adopt:${BUILD_NUMBER}
+    '''
+  }
+}
+
 
     stage('Deploy (Staging)') {
       steps {
         echo "docker-compose up web-staging (3001)"
         sh '''
-          docker-compose -f docker-compose.yml up -d --build web-staging
-          curl -fsS http://host.docker.internal:3001/health
-        '''
+  set -eux
+  for i in $(seq 1 30); do
+    code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
+    if [ "$code" = "200" ]; then
+      echo "Healthcheck passed"
+      exit 0
+    fi
+    echo "Waiting for app... (got HTTP $code)"
+    sleep 2
+  done
+
+  echo "Healthcheck failed after retries"
+  docker logs cellm8s-web-staging-1 || true
+  exit 1
+'''
       }
     }
 
