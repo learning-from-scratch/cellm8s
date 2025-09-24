@@ -68,7 +68,7 @@ pipeline {
 
 
 
-    stage('Code Quality') {
+stage('Code Quality') {
   steps {
     // 1) Debug: prove Jenkins actually has the sonar-project.properties file
     sh '''
@@ -86,6 +86,13 @@ pipeline {
         exit 2
       fi
     '''
+
+    sh '''
+      set -eux
+      docker run --rm -v "$WORKSPACE:/usr/src" alpine:3.20 \
+         sh -lc 'ls -la /usr/src; echo "---"; cat /usr/src/sonar-project.properties'
+      '''
+
 
     // 2) Run SonarScanner (replace credentialsId with yours)
     withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
