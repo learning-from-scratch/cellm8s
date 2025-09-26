@@ -1,16 +1,12 @@
 pipeline {
   agent any
-
-  options {
-    timestamps()
-    disableConcurrentBuilds()
-  }
+  options { timestamps(); disableConcurrentBuilds() }
 
   environment {
     IMAGE          = "simple-pet-adopt"
     TAG            = "${env.BUILD_NUMBER}"
     SONAR_HOST_URL = "http://host.docker.internal:9000"
-    SONAR_LOGIN    = credentials("sonar-token")
+    SONAR_LOGIN    = credentials('sonar-token')
 
     APP_USER       = "admin"
     APP_PASS       = "admin123"
@@ -18,221 +14,212 @@ pipeline {
 
     RECIPIENTS     = "brennanterreoz@gmail.com"
 
-    FAIL_ON_TRIVY = "CRITICAL"   // NONE|HIGH|CRITICAL
-    FAIL_ON_NPM   = "CRITICAL"   // NONE|HIGH|CRITICAL
+    FAIL_ON_TRIVY = 'CRITICAL'   // NONE|HIGH|CRITICAL
+    FAIL_ON_NPM   = 'CRITICAL'   // NONE|HIGH|CRITICAL
   }
 
   stages {
-    stage("Build") {
+    stage('Build') {
       steps {
         echo "Building Docker image ${IMAGE}:${TAG}"
-        sh """
+        sh '''
           docker build -t $IMAGE:$TAG .
           docker tag $IMAGE:$TAG $IMAGE:latest
-        """
+        '''
       }
     }
 
-    stage("Test") {
-      steps {
-        echo "Run unit tests in the built image and extract coverage + JUnit"
-        sh """
-          set -eux
-          # Create a container from the built image to run tests
-          CID=$(docker create ${IMAGE}:${TAG} /bin/sh -lc \
-            'set -eux; npm ci; npm test -- --ci --coverage')
+    stage('Test') {
+  steps {
+    echo "Run unit tests in the built image and extract coverage + JUnit"
+    sh """
+      set -eux
+      CID=\$(docker create ${IMAGE}:${TAG} /bin/sh -lc '
+        set -eux
+        npm ci
+        npm test -- --ci --coverage
+      ')
+      docker start -a "\$CID" || true
 
-          # Start the container and wait for it to exit
-          docker start -a "$CID" || true
+      # Clean previous artifacts
+      rm -rf "${WORKSPACE}/coverage" || true
+      rm -f  "${WORKSPACE}/junit.xml" || true
 
-          # Clean previous artifacts
-          rm -rf "${WORKSPACE}/coverage" || true
-          rm -f  "${WORKSPACE}/junit.xml" || true
+      # Copy test outputs from the container into the workspace
+      docker cp "\$CID:/app/coverage"   "${WORKSPACE}/coverage" || true
+      docker cp "\$CID:/app/junit.xml"  "${WORKSPACE}/junit.xml" || true
 
-          # Copy test outputs from the container into the workspace
-          docker cp "$CID:/app/coverage"   "${WORKSPACE}/coverage" || true
-          docker cp "$CID:/app/junit.xml"  "${WORKSPACE}/junit.xml" || true
-
-          # Remove the container
-          docker rm "$CID" || true
-          chmod -R a+rX "${WORKSPACE}/coverage" || true
-        """
-      }
-      post {
-        always {
-          script {
-            // Archive raw artifacts for debugging
-            if (fileExists("coverage")) {
-              archiveArtifacts artifacts: "coverage/**", fingerprint: true
-            }
-            if (fileExists("junit.xml")) {
-              junit "junit.xml"   // this feeds Jenkins test trend & pass/fail
-            }
-          }
-          // Publish the HTML coverage site (index.html under lcov-report)
-          publishHTML(target: [
-            reportDir   : "coverage/lcov-report",
-            reportFiles : "index.html",
-            reportName  : "Coverage"
-          ])
+      docker rm "\$CID" || true
+      chmod -R a+rX "${WORKSPACE}/coverage" || true
+    """
+  }
+  post {
+    always {
+      script {
+        // Archive raw artifacts for debugging
+        if (fileExists('coverage')) {
+          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+        }
+        if (fileExists('junit.xml')) {
+          junit 'junit.xml'   // this feeds Jenkins test trend & pass/fail
         }
       }
+      // Publish the HTML coverage site (index.html under lcov-report)
+      publishHTML(target: [
+        reportDir   : 'coverage/lcov-report',
+        reportFiles : 'index.html',
+        reportName  : 'Coverage'
+      ])
     }
+  }
+}
 
-    stage("Code Quality") {
+    stage('Code Quality') {
       steps {
-        withCredentials([string(credentialsId: "SONAR_TOKEN", variable: "SONAR_TOKEN")]) {
-          sh """
+        withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]) {
+          sh '''
             set -eux
             VOLUME_NAME=jenkins_home
             PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
-            # Run Sonar Scanner in a Docker container
             docker run --rm \
               -e SONAR_HOST_URL=http://host.docker.internal:9000 \
-              -e SONAR_TOKEN=\"${SONAR_TOKEN}\" \
+              -e SONAR_TOKEN="${SONAR_TOKEN}" \
               -v ${VOLUME_NAME}:/var/jenkins_home \
               sonarsource/sonar-scanner-cli \
               sonar-scanner \
                 -Dsonar.projectBaseDir=${PROJECT_DIR} \
                 -Dsonar.login=${SONAR_TOKEN}
-          """
+          '''
         }
       }
     }
 
-    stage("Security") {
-      steps {
-        sh """
-          set -eux
-          VOLUME_NAME=jenkins_home
-          PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
+    stage('Security') {
+  steps {
+    sh '''
+      set -eux
+      VOLUME_NAME=jenkins_home
+      PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
 
-          # Run npm audit and save the report
-          docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home -w ${PROJECT_DIR} \
-            node:20 bash -lc 'npm ci && npm audit --json || true' \
-            | tee npm-audit.json >/dev/null
+      docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home -w ${PROJECT_DIR} \
+        node:20 bash -lc 'npm ci && npm audit --json || true' \
+        | tee npm-audit.json >/dev/null
 
-          # Run Trivy vulnerability scanner and save the report
-          # Do NOT let Trivy set the exit code; we decide in Groovy
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.54.1 image ${IMAGE}:${BUILD_NUMBER} \
-              --severity HIGH,CRITICAL --format json -o trivy-report.json || true
-        """
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: "npm-audit.json,trivy-report.json", fingerprint: true, allowEmptyArchive: true
-          script {
-            def npmTxt   = fileExists("npm-audit.json")   ? readFile("npm-audit.json").toLowerCase()   : ""
-            def trivyTxt = fileExists("trivy-report.json") ? readFile("trivy-report.json").toLowerCase() : ""
+      # Do NOT let Trivy set the exit code; we decide in Groovy
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy:0.54.1 image ${IMAGE}:${BUILD_NUMBER} \
+          --severity HIGH,CRITICAL --format json -o trivy-report.json || true
+    '''
+  }
+  post {
+    always {
+      archiveArtifacts artifacts: 'npm-audit.json,trivy-report.json', fingerprint: true, allowEmptyArchive: true
+      script {
+        def npmTxt   = fileExists('npm-audit.json')   ? readFile('npm-audit.json').toLowerCase()   : ''
+        def trivyTxt = fileExists('trivy-report.json') ? readFile('trivy-report.json').toLowerCase() : ''
 
-            def npmHigh  = npmTxt.contains('"severity":"high"')
-            def npmCrit  = npmTxt.contains('"severity":"critical"')
-            def triHigh  = trivyTxt.contains('"severity":"high"')
-            def triCrit  = trivyTxt.contains('"severity":"critical"')
+        def npmHigh  = npmTxt.contains('"severity":"high"')
+        def npmCrit  = npmTxt.contains('"severity":"critical"')
+        def triHigh  = trivyTxt.contains('"severity":"high"')
+        def triCrit  = trivyTxt.contains('"severity":"critical"')
 
-            def failOnNpm   = env.FAIL_ON_NPM
-            def failOnTrivy = env.FAIL_ON_TRIVY
+        def failOnNpm   = env.FAIL_ON_NPM
+        def failOnTrivy = env.FAIL_ON_TRIVY
 
-            def badNpm   = (failOnNpm   == "HIGH"      && (npmHigh || npmCrit)) || \
-                           (failOnNpm   == "CRITICAL"  && npmCrit)
-            def badTrivy = (failOnTrivy == "HIGH"      && (triHigh || triCrit)) || \
-                           (failOnTrivy == "CRITICAL"  && triCrit)
+        def badNpm   = (failOnNpm   == 'HIGH'      && (npmHigh || npmCrit)) ||
+                       (failOnNpm   == 'CRITICAL'  && npmCrit)
+        def badTrivy = (failOnTrivy == 'HIGH'      && (triHigh || triCrit)) ||
+                       (failOnTrivy == 'CRITICAL'  && triCrit)
 
-            if (badNpm || badTrivy) {
-              currentBuild.result = "UNSTABLE"
-              echo "Security threshold hit. npm(${failOnNpm})=${badNpm}, trivy(${failOnTrivy})=${badTrivy}"
-            } else {
-              echo "Security below thresholds. Marking SUCCESS."
-            }
-          }
+        if (badNpm || badTrivy) {
+          currentBuild.result = 'UNSTABLE'
+          echo "Security threshold hit. npm(${failOnNpm})=${badNpm}, trivy(${failOnTrivy})=${badTrivy}"
+        } else {
+          echo "Security below thresholds. Marking SUCCESS."
         }
       }
     }
+  }
+}
 
-    stage("Deploy (Staging)") {
+    stage('Deploy (Staging)') {
       steps {
         echo "docker-compose up web-staging (3001)"
-        sh """
+        sh '''
           set -eux
-          # Health check for the staging environment
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
-            [ \"$code\" = \"200\" ] && { echo \"Healthcheck passed\"; break; }
-            echo \"Waiting for app... (got HTTP $code)\"; sleep 2
+            [ "$code" = "200" ] && { echo "Healthcheck passed"; break; }
+            echo "Waiting for app... (got HTTP $code)"; sleep 2
           done
           docker-compose -f docker-compose.yml logs web-staging > staging.log 2>&1 || true
-        """
-        archiveArtifacts artifacts: "staging.log", fingerprint: true, allowEmptyArchive: true
+        '''
+        archiveArtifacts artifacts: 'staging.log', fingerprint: true, allowEmptyArchive: true
       }
     }
 
-    stage("Release (Promote to Prod)") {
+    stage('Release (Promote to Prod)') {
       steps {
         echo "docker-compose up web-prod (3000)"
-        sh """
+        sh '''
           set -eux
           : "${IMAGE:=simple-pet-adopt}"
           : "${TAG:=latest}"
           export COMPOSE_PROJECT_NAME=cellm8s
 
-          # Tag the image for production
           docker tag "$IMAGE:$TAG" "$IMAGE:prod" || true
 
-          # Remove any existing container on port 3000
           CID=$(docker ps -q --filter "publish=3000" || true)
           [ -n "$CID" ] && docker rm -f $CID || true
 
-          # Deploy the production container
           docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" rm -fs web-prod || true
           docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate web-prod
 
-          # Health check for the production environment
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3000/health || true)
-            [ \"$code\" = \"200\" ] && { echo \"Prod healthy\"; break; }
-            echo \"Waiting for prod... (HTTP ${code:-none})\"; sleep 2
+            [ "$code" = "200" ] && { echo "Prod healthy"; break; }
+            echo "Waiting for prod... (HTTP ${code:-none})"; sleep 2
           done
 
           docker logs ${COMPOSE_PROJECT_NAME}-web-prod-1 > prod.log 2>&1 || true
 
-          # Create a git tag for the release
-          git tag -a \"v1.${BUILD_NUMBER}\" -m \"release v1.${BUILD_NUMBER}\" || true
-        """
-        archiveArtifacts artifacts: "prod.log", fingerprint: true, allowEmptyArchive: true
+          git tag -a "v1.${BUILD_NUMBER}" -m "release v1.${BUILD_NUMBER}" || true
+        '''
+        archiveArtifacts artifacts: 'prod.log', fingerprint: true, allowEmptyArchive: true
       }
     }
 
-    stage("Monitoring & Alerting") {
-      steps {
-        sh """
-          set -eux
-          # Bring up Uptime Kuma (idempotent)
-          docker-compose -f docker-compose.yml up -d uptime-kuma || true
+    stage('Monitoring & Alerting') {
+  steps {
+    sh '''
+      set -eux
+      # Bring up Uptime Kuma (idempotent)
+      docker-compose -f docker-compose.yml up -d uptime-kuma || true
 
-          # Health checks with retries so we don't flake on slow start
-          for svc in 3000 3001; do
-            ok=0
-            for i in $(seq 1 15); do
-              code=$(curl -s -o /dev/null -w \"%{http_code}\" \"http://host.docker.internal:${svc}/health\" || true)
-              if [ \"$code\" = \"200\" ]; then
-                echo \"Service on ${svc} healthy.\"
-                ok=1; break
-              fi
-              echo \"Waiting for ${svc} (got ${code:-none})...\"
-              sleep 2
-            done
-            [ $ok -eq 1 ] || exit 2
-          done
-        """
-      }
-      post {
-        failure {
-          // if either health check failed, log it clearly; your global emailext already sends mail
-          echo "Monitoring detected a failing health endpoint. See console log."
-        }
-      }
+      # Health checks with retries so we don't flake on slow start
+      for svc in 3000 3001; do
+        ok=0
+        for i in $(seq 1 15); do
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://host.docker.internal:${svc}/health" || true)
+          if [ "$code" = "200" ]; then
+            echo "Service on ${svc} healthy."
+            ok=1; break
+          fi
+          echo "Waiting for ${svc} (got ${code:-none})..."
+          sleep 2
+        done
+        [ $ok -eq 1 ] || exit 2
+      done
+    '''
+  }
+  post {
+    failure {
+      // if either health check failed, log it clearly; your global emailext already sends mail
+      echo "Monitoring detected a failing health endpoint. See console log."
     }
+  }
+}
+
   }
 
   post {
