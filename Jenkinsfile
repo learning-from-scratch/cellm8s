@@ -28,33 +28,49 @@ pipeline {
     }
 
     stage('Test') {
-      steps {
-        echo "Run unit tests in the built image and extract coverage"
-        sh """
-          set -eux
-          CID=\$(docker create ${IMAGE}:${TAG} /bin/sh -lc '
-            set -eux
-            node -v
-            npm -v
-            npm test -- --coverage
-          ')
-          docker start -a "\$CID" || true
-          rm -rf "${WORKSPACE}/coverage" || true
-          docker cp "\$CID:/app/coverage" "${WORKSPACE}/coverage" || true
-          docker rm "\$CID" || true
-          chmod -R a+rX "${WORKSPACE}/coverage" || true
-        """
-      }
-      post {
-        always {
-          script {
-            if (fileExists('coverage')) {
-              archiveArtifacts artifacts: 'coverage/**', fingerprint: true
-            }
-          }
+  steps {
+    echo "Run unit tests in the built image and extract coverage + JUnit"
+    sh """
+      set -eux
+      CID=\$(docker create ${IMAGE}:${TAG} /bin/sh -lc '
+        set -eux
+        npm ci
+        npm test -- --ci --coverage
+      ')
+      docker start -a "\$CID" || true
+
+      # Clean previous artifacts
+      rm -rf "${WORKSPACE}/coverage" || true
+      rm -f  "${WORKSPACE}/junit.xml" || true
+
+      # Copy test outputs from the container into the workspace
+      docker cp "\$CID:/app/coverage"   "${WORKSPACE}/coverage" || true
+      docker cp "\$CID:/app/junit.xml"  "${WORKSPACE}/junit.xml" || true
+
+      docker rm "\$CID" || true
+      chmod -R a+rX "${WORKSPACE}/coverage" || true
+    """
+  }
+  post {
+    always {
+      script {
+        // Archive raw artifacts for debugging
+        if (fileExists('coverage')) {
+          archiveArtifacts artifacts: 'coverage/**', fingerprint: true
+        }
+        if (fileExists('junit.xml')) {
+          junit 'junit.xml'   // this feeds Jenkins test trend & pass/fail
         }
       }
+      // Publish the HTML coverage site (index.html under lcov-report)
+      publishHTML(target: [
+        reportDir   : 'coverage/lcov-report',
+        reportFiles : 'index.html',
+        reportName  : 'Coverage'
+      ])
     }
+  }
+}
 
     stage('Code Quality') {
       steps {
