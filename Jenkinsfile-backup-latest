@@ -98,21 +98,20 @@ pipeline {
     }
 
     stage('Deploy (Staging)') {
-  steps {
-    sh '''
-      set -eux
-      export COMPOSE_PROJECT_NAME=cellm8s
-      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" up -d --force-recreate web-staging
-      for i in $(seq 1 30); do
-        code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
-        [ "$code" = "200" ] && { echo "Staging healthy"; break; }
-        sleep 2
-      done
-      docker-compose -f docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs web-staging > staging.log 2>&1 || true
-    '''
-    archiveArtifacts artifacts: 'staging.log', fingerprint: true, allowEmptyArchive: true
-  }
-}
+      steps {
+        echo "docker-compose up web-staging (3001)"
+        sh '''
+          set -eux
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:3001/health || true)
+            [ "$code" = "200" ] && { echo "Healthcheck passed"; break; }
+            echo "Waiting for app... (got HTTP $code)"; sleep 2
+          done
+          docker-compose -f docker-compose.yml logs web-staging > staging.log 2>&1 || true
+        '''
+        archiveArtifacts artifacts: 'staging.log', fingerprint: true, allowEmptyArchive: true
+      }
+    }
 
     stage('Release (Promote to Prod)') {
       steps {
