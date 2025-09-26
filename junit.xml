@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="2" failures="0" errors="0" time="1.409">
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-09-26T04:41:17" time="0.56" tests="1">
+    <testcase classname=" add + list" name=" add + list" time="0.006" file="tests/petsStore.test.js">
+    </testcase>
+  </testsuite>
+  <testsuite name="undefined" errors="0" failures="0" skipped="0" timestamp="2025-09-26T04:41:17" time="0.768" tests="1">
+    <testcase classname=" health works" name=" health works" time="0.058" file="tests/app.test.js">
+    </testcase>
+  </testsuite>
+</testsuites>
