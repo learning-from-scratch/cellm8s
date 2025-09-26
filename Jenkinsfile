@@ -93,25 +93,58 @@ pipeline {
     }
 
     stage('Security') {
-      steps {
-        echo 'npm audit and Trivy scan'
-        sh '''
-          set -eux
-          VOLUME_NAME=jenkins_home
-          PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
+  steps {
+    echo 'Running npm audit (high+) and Trivy (HIGH/CRITICAL)'
+    sh '''
+      set -eux
+      VOLUME_NAME=jenkins_home
+      PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
 
-          # Save npm audit to file
-          docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home -w ${PROJECT_DIR} \
-            node:20 bash -lc 'npm ci && npm audit --json || true' \
-            | tee npm-audit.json >/dev/null
+      # npm audit (do not fail pipeline yet; we’ll decide in Groovy)
+      docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home -w ${PROJECT_DIR} \
+        node:20 bash -lc 'npm ci && npm audit --audit-level=high --json || true' \
+        | tee npm-audit.json >/dev/null
 
-          # Trivy image scan -> JSON file
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:0.54.1 image --format json -o trivy-report.json ${IMAGE}:${BUILD_NUMBER} || true
-        '''
-        archiveArtifacts artifacts: 'npm-audit.json,trivy-report.json', fingerprint: true
+      # Trivy: exit-code=1 when HIGH/CRITICAL; we’ll capture status then keep going
+      set +e
+      docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+        aquasec/trivy:0.54.1 image ${IMAGE}:${BUILD_NUMBER} \
+          --severity HIGH,CRITICAL --exit-code 1 --format json -o trivy-report.json
+      TRIVY_STATUS=$?
+      echo "TRIVY_STATUS=${TRIVY_STATUS}" > trivy.status
+      set -e
+    '''
+  }
+  post {
+    always {
+      archiveArtifacts artifacts: 'npm-audit.json,trivy-report.json,trivy.status', fingerprint: true, allowEmptyArchive: true
+
+      // Decide build health based on reports (no jq required)
+      script {
+        def hasHighFromNpm = false
+        def hasHighFromTrivy = false
+
+        if (fileExists('npm-audit.json')) {
+          // crude but effective: look for "severity":"high" or "critical"
+          def txt = readFile('npm-audit.json').toLowerCase()
+          hasHighFromNpm = (txt.contains('"severity":"high"') || txt.contains('"severity":"critical"'))
+        }
+
+        if (fileExists('trivy.status')) {
+          def st = readFile('trivy.status').trim().split('=')[-1] as Integer
+          hasHighFromTrivy = (st == 1)
+        }
+
+        if (hasHighFromNpm || hasHighFromTrivy) {
+          currentBuild.result = 'UNSTABLE'   // don’t nuke the whole pipeline, but flag it
+          echo "Security findings detected: npm=${hasHighFromNpm}, trivy=${hasHighFromTrivy}. Marking build UNSTABLE."
+        } else {
+          echo "Security clean at configured thresholds."
+        }
       }
     }
+  }
+}
 
     stage('Deploy (Staging)') {
       steps {
@@ -161,15 +194,36 @@ pipeline {
     }
 
     stage('Monitoring & Alerting') {
-      steps {
-        echo "Start Uptime Kuma and verify endpoints"
-        sh '''
-          docker-compose -f docker-compose.yml up -d uptime-kuma || true
-          curl -fsS http://host.docker.internal:3000/health || true
-          curl -fsS http://host.docker.internal:3001/health || true
-        '''
-      }
+  steps {
+    sh '''
+      set -eux
+      # Bring up Uptime Kuma (idempotent)
+      docker-compose -f docker-compose.yml up -d uptime-kuma || true
+
+      # Health checks with retries so we don't flake on slow start
+      for svc in 3000 3001; do
+        ok=0
+        for i in $(seq 1 15); do
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://host.docker.internal:${svc}/health" || true)
+          if [ "$code" = "200" ]; then
+            echo "Service on ${svc} healthy."
+            ok=1; break
+          fi
+          echo "Waiting for ${svc} (got ${code:-none})..."
+          sleep 2
+        done
+        [ $ok -eq 1 ] || exit 2
+      done
+    '''
+  }
+  post {
+    failure {
+      // if either health check failed, log it clearly; your global emailext already sends mail
+      echo "Monitoring detected a failing health endpoint. See console log."
     }
+  }
+}
+
   }
 
   post {
