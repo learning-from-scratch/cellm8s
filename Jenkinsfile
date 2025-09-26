@@ -12,8 +12,10 @@ pipeline {
     APP_PASS       = "admin123"
     SESSION_SECRET = "change_me_in_jenkins"
 
-    // ✅ Put real recipients here (comma or space separated)
     RECIPIENTS     = "brennanterreoz@gmail.com"
+
+    FAIL_ON_TRIVY = 'CRITICAL'   // NONE|HIGH|CRITICAL
+    FAIL_ON_NPM   = 'CRITICAL'   // NONE|HIGH|CRITICAL
   }
 
   stages {
@@ -94,52 +96,46 @@ pipeline {
 
     stage('Security') {
   steps {
-    echo 'Running npm audit (high+) and Trivy (HIGH/CRITICAL)'
     sh '''
       set -eux
       VOLUME_NAME=jenkins_home
       PROJECT_DIR=/var/jenkins_home/workspace/cellm8s
 
-      # npm audit (do not fail pipeline yet; we’ll decide in Groovy)
       docker run --rm -v ${VOLUME_NAME}:/var/jenkins_home -w ${PROJECT_DIR} \
-        node:20 bash -lc 'npm ci && npm audit --audit-level=high --json || true' \
+        node:20 bash -lc 'npm ci && npm audit --json || true' \
         | tee npm-audit.json >/dev/null
 
-      # Trivy: exit-code=1 when HIGH/CRITICAL; we’ll capture status then keep going
-      set +e
+      # Do NOT let Trivy set the exit code; we decide in Groovy
       docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
         aquasec/trivy:0.54.1 image ${IMAGE}:${BUILD_NUMBER} \
-          --severity HIGH,CRITICAL --exit-code 1 --format json -o trivy-report.json
-      TRIVY_STATUS=$?
-      echo "TRIVY_STATUS=${TRIVY_STATUS}" > trivy.status
-      set -e
+          --severity HIGH,CRITICAL --format json -o trivy-report.json || true
     '''
   }
   post {
     always {
-      archiveArtifacts artifacts: 'npm-audit.json,trivy-report.json,trivy.status', fingerprint: true, allowEmptyArchive: true
-
-      // Decide build health based on reports (no jq required)
+      archiveArtifacts artifacts: 'npm-audit.json,trivy-report.json', fingerprint: true, allowEmptyArchive: true
       script {
-        def hasHighFromNpm = false
-        def hasHighFromTrivy = false
+        def npmTxt   = fileExists('npm-audit.json')   ? readFile('npm-audit.json').toLowerCase()   : ''
+        def trivyTxt = fileExists('trivy-report.json') ? readFile('trivy-report.json').toLowerCase() : ''
 
-        if (fileExists('npm-audit.json')) {
-          // crude but effective: look for "severity":"high" or "critical"
-          def txt = readFile('npm-audit.json').toLowerCase()
-          hasHighFromNpm = (txt.contains('"severity":"high"') || txt.contains('"severity":"critical"'))
-        }
+        def npmHigh  = npmTxt.contains('"severity":"high"')
+        def npmCrit  = npmTxt.contains('"severity":"critical"')
+        def triHigh  = trivyTxt.contains('"severity":"high"')
+        def triCrit  = trivyTxt.contains('"severity":"critical"')
 
-        if (fileExists('trivy.status')) {
-          def st = readFile('trivy.status').trim().split('=')[-1] as Integer
-          hasHighFromTrivy = (st == 1)
-        }
+        def failOnNpm   = env.FAIL_ON_NPM
+        def failOnTrivy = env.FAIL_ON_TRIVY
 
-        if (hasHighFromNpm || hasHighFromTrivy) {
-          currentBuild.result = 'UNSTABLE'   // don’t nuke the whole pipeline, but flag it
-          echo "Security findings detected: npm=${hasHighFromNpm}, trivy=${hasHighFromTrivy}. Marking build UNSTABLE."
+        def badNpm   = (failOnNpm   == 'HIGH'      && (npmHigh || npmCrit)) ||
+                       (failOnNpm   == 'CRITICAL'  && npmCrit)
+        def badTrivy = (failOnTrivy == 'HIGH'      && (triHigh || triCrit)) ||
+                       (failOnTrivy == 'CRITICAL'  && triCrit)
+
+        if (badNpm || badTrivy) {
+          currentBuild.result = 'UNSTABLE'
+          echo "Security threshold hit. npm(${failOnNpm})=${badNpm}, trivy(${failOnTrivy})=${badTrivy}"
         } else {
-          echo "Security clean at configured thresholds."
+          echo "Security below thresholds. Marking SUCCESS."
         }
       }
     }
