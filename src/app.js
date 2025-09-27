@@ -84,6 +84,11 @@ app.get("/pets/:id", requireAuth, (req, res) => {
    if (!pet) return res.status(404).render("pets", { pets: pets.list(), error: "Pet not found." });
    res.render("pet", { pet });
 });
+app.delete("/pets/:id", requireAuth, (req, res) => {
+   const deleted = pets.deleteById(req.params.id);
+   if (!deleted) return res.status(404).json({ error: "Pet not found." });
+   res.json({ success: true, message: "Pet deleted successfully." });
+});
 
 // Adopters
 app.get("/adopters", requireAuth, (_req, res) => {
@@ -113,6 +118,11 @@ app.get("/adopters/:id", requireAuth, (req, res) => {
    const adopter = adopters.getById(req.params.id);
    if (!adopter) return res.status(404).render("adopters", { adopters: adopters.list(), error: "Adopter not found." });
    res.render("adopter", { adopter });
+});
+app.delete("/adopters/:id", requireAuth, (req, res) => {
+   const deleted = adopters.deleteById(req.params.id);
+   if (!deleted) return res.status(404).json({ error: "Adopter not found." });
+   res.json({ success: true, message: "Adopter deleted successfully." });
 });
 
 module.exports = app;

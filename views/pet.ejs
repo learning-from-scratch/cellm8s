@@ -37,7 +37,39 @@
                </ul>
             </div>
          </div>
+         <div class="card shadow-sm">
+            <div class="card-body">
+               <button class="btn btn-danger" onclick="deletePet(${pet.id})">
+                  <i class="bi bi-trash"></i> Delete Pet
+               </button>
+            </div>
+         </div>
       </div>
    </div>
+   <script>
+      function deletePet(petId) {
+         if (confirm('Are you sure you want to delete this pet? This action cannot be undone.')) {
+            fetch('/pets/' + petId, {
+               method: 'DELETE',
+               headers: {
+                  'Content-Type': 'application/json',
+               }
+            })
+            .then(response => response.json())
+            .then(data => {
+               if (data.success) {
+                  alert('Pet deleted successfully.');
+                  window.location.href = '/pets';
+               } else {
+                  alert('Error deleting pet: ' + data.error);
+               }
+            })
+            .catch(error => {
+               console.error('Error:', error);
+               alert('Error deleting pet. Please try again.');
+            });
+         }
+      }
+   </script>
    ` }) %>
 

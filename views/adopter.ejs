@@ -1,32 +1,66 @@
-<%- include('layout', { body: `
-   <div class="row g-4">
-      <div class="col-12 col-lg-5">
-         <div class="card shadow-sm">
-            <div class="card-body">
-               <h1 class="h4 mb-1">${adopter.firstName} ${adopter.lastName}</h1>
-               <div class="text-muted mb-3">${adopter.city ? adopter.city + ', ' : ''}${adopter.state || ''}</div>
-               <div class="mb-2"><strong>Email:</strong> <a href="mailto:${adopter.email}">${adopter.email}</a></div>
-               ${adopter.phone ? `<div class=\"mb-2\"><strong>Phone:</strong> <a href=\"tel:${adopter.phone}\">${adopter.phone}</a></div>` : ''}
-               ${adopter.address ? `<div class=\"mb-2\"><strong>Address:</strong> ${adopter.address}${adopter.city ? ', ' + adopter.city : ''}${adopter.state ? ', ' + adopter.state : ''}${adopter.zip ? ' ' + adopter.zip : ''}</div>` : ''}
-            </div>
-         </div>
-      </div>
-      <div class="col-12 col-lg-7">
-         <div class="card shadow-sm mb-4">
-            <div class="card-body">
-               <h2 class="h5">About</h2>
-               <p class="mb-0">${adopter.about || 'No bio provided.'}</p>
-            </div>
-         </div>
-         <div class="card shadow-sm">
-            <div class="card-body">
-               <h2 class="h5">Preferences</h2>
-               <ul class="mb-0">
-                  ${Array.isArray(adopter.preferences) && adopter.preferences.length ? adopter.preferences.map(p => `<li>${p}</li>`).join('') : '<li>None specified</li>'}
-               </ul>
-            </div>
+<%- include('layout', { body: ` <div class="row g-4">
+   <div class="col-12 col-lg-5">
+      <div class="card shadow-sm">
+         <div class="card-body">
+            <h1 class="h4 mb-1">${adopter.firstName} ${adopter.lastName}</h1>
+            <div class="text-muted mb-3">${adopter.city ? adopter.city + ', ' : ''}${adopter.state || ''}</div>
+            <div class="mb-2"><strong>Email:</strong> <a href="mailto:${adopter.email}">${adopter.email}</a></div>
+            ${adopter.phone ? `<div class=\"mb-2\"><strong>Phone:</strong> <a
+                  href=\"tel:${adopter.phone}\">${adopter.phone}</a></div>` : ''}
+            ${adopter.address ? `<div class=\"mb-2\"><strong>Address:</strong> ${adopter.address}${adopter.city ? ', ' +
+               adopter.city : ''}${adopter.state ? ', ' + adopter.state : ''}${adopter.zip ? ' ' + adopter.zip : ''}
+            </div>` : ''}
          </div>
       </div>
    </div>
+   <div class="col-12 col-lg-7">
+      <div class="card shadow-sm mb-4">
+         <div class="card-body">
+            <h2 class="h5">About</h2>
+            <p class="mb-0">${adopter.about || 'No bio provided.'}</p>
+         </div>
+      </div>
+      <div class="card shadow-sm">
+         <div class="card-body">
+            <h2 class="h5">Preferences</h2>
+            <ul class="mb-0">
+               ${Array.isArray(adopter.preferences) && adopter.preferences.length ? adopter.preferences.map(p => `<li>
+                  ${p}</li>`).join('') : '<li>None specified</li>'}
+            </ul>
+         </div>
+      </div>
+      <div class="card shadow-sm">
+         <div class="card-body">
+            <button class="btn btn-danger" onclick="deleteAdopter(${adopter.id})">
+               <i class="bi bi-trash"></i> Delete Adopter
+            </button>
+         </div>
+      </div>
+   </div>
+   </div>
+   <script>
+      function deleteAdopter(adopterId) {
+         if (confirm('Are you sure you want to delete this adopter? This action cannot be undone.')) {
+            fetch('/adopters/' + adopterId, {
+               method: 'DELETE',
+               headers: {
+                  'Content-Type': 'application/json',
+               }
+            })
+               .then(response => response.json())
+               .then(data => {
+                  if (data.success) {
+                     alert('Adopter deleted successfully.');
+                     window.location.href = '/adopters';
+                  } else {
+                     alert('Error deleting adopter: ' + data.error);
+                  }
+               })
+               .catch(error => {
+                  console.error('Error:', error);
+                  alert('Error deleting adopter. Please try again.');
+               });
+         }
+      }
+   </script>
    ` }) %>
-

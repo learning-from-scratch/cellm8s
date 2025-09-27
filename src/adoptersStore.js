@@ -18,6 +18,12 @@ function getById(id) {
    const all = load();
    return all.find(a => String(a.id) === String(id));
 }
+function deleteById(id) {
+   const all = load();
+   const filtered = all.filter(a => String(a.id) !== String(id));
+   save(filtered);
+   return all.length !== filtered.length; // Return true if item was found and deleted
+}
 
-module.exports = { list, add, getById };
+module.exports = { list, add, getById, deleteById };
 
