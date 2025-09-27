@@ -105,10 +105,11 @@ pipeline {
             node:20 bash -lc 'npm ci && npm audit --json || true' \
             | tee npm-audit.json >/dev/null
 
-          # Do NOT let Trivy set the exit code; we decide in Groovy
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          # Trivy: write JSON to workspace by redirecting stdout (no -o)
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:0.54.1 image ${IMAGE}:${BUILD_NUMBER} \
-              --severity HIGH,CRITICAL --format json -o trivy-report.json || true
+               --severity HIGH,CRITICAL --format json --no-progress \
+               > trivy-report.json || true
         '''
       }
       post {
